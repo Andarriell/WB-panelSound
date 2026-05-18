@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Minecraft Audio Panel</title>
+  <style>
+    :root { font-family: Arial, sans-serif; color: #f4f4f5; background: #0f1117; }
+    body { margin: 0; padding: 24px; }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    .card { background: #171a23; border: 1px solid #2a2f3d; border-radius: 18px; padding: 18px; margin-bottom: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    h1 { margin: 0 0 8px; font-size: 30px; }
+    h2 { margin: 0 0 14px; font-size: 20px; }
+    label { display: block; margin: 10px 0 6px; color: #c9ced8; }
+    input, select, button { font-size: 16px; border-radius: 12px; border: 1px solid #343a4b; padding: 11px 12px; }
+    input, select { width: 100%; box-sizing: border-box; background: #0f1117; color: #fff; }
+    button { cursor: pointer; background: #2b6cff; color: white; border: 0; margin: 6px 6px 6px 0; }
+    button.secondary { background: #303646; }
+    button.danger { background: #d93838; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .status { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+    .pill { background: #252b3a; border: 1px solid #343a4b; border-radius: 999px; padding: 8px 12px; color: #d7dcea; }
+    .ok { color: #8dffb3; }
+    .ko { color: #ff9a9a; }
+    pre { background: #090b10; border: 1px solid #252b3a; border-radius: 14px; padding: 14px; overflow: auto; max-height: 300px; white-space: pre-wrap; }
+    .hint { color: #aeb6c7; line-height: 1.45; }
+    @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>🎧 Minecraft Audio Panel</h1>
+      <p class="hint">Envoie un MP3 ou un flux OBS/Icecast vers le plugin SoundOnly via WebSocket.</p>
+      <label>Mot de passe du panel</label>
+      <input id="password" type="password" placeholder="Mot de passe" />
+      <button onclick="savePassword()">Sauvegarder</button>
+      <button class="secondary" onclick="refreshAll()">Rafraîchir</button>
+      <button class="secondary" onclick="pingMinecraft()">Tester plugin Minecraft</button>
+      <div class="status">
+        <span class="pill">Plugin cible : <b id="mcWsUrl">...</b></span>
+        <span class="pill">Statut : <b id="streamStatus">...</b></span>
+        <span class="pill">Source : <b id="streamName">...</b></span>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h2>Lire un fichier audio</h2>
+        <label>Uploader un MP3/WAV/OGG/FLAC/M4A</label>
+        <input id="uploadFile" type="file" accept="audio/*" />
+        <button onclick="uploadAudio()">Uploader</button>
+
+        <label>Fichiers disponibles</label>
+        <select id="musicList"></select>
+        <button onclick="playFile()">▶ Lire fichier</button>
+      </div>
+
+      <div class="card">
+        <h2>Lire un flux OBS / Icecast</h2>
+        <label>URL du flux</label>
+        <input id="streamUrl" placeholder="http://IP_DU_VPS:8000/live" />
+        <button onclick="playUrl()">▶ Lancer le live</button>
+        <p class="hint">OBS ne sort pas directement en WebSocket. Le plus simple : OBS → Icecast → ce panel → Minecraft.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Contrôles</h2>
+      <label>Volume : <span id="volumeLabel">100%</span></label>
+      <input id="volume" type="range" min="0" max="200" value="100" oninput="volumeLabel.textContent = this.value + '%'" />
+      <button onclick="setVolume()">Appliquer volume</button>
+      <button class="danger" onclick="stopAudio()">■ Stop</button>
+      <p class="hint">Le volume s’applique au prochain lancement audio. Pour modifier pendant un live, clique Stop puis relance.</p>
+    </div>
+
+    <div class="card">
+      <h2>Logs</h2>
+      <pre id="logs">...</pre>
+    </div>
+  </div>
+
+<script>
+  const passwordInput = document.getElementById("password");
+  const musicList = document.getElementById("musicList");
+  const logs = document.getElementById("logs");
+  const mcWsUrl = document.getElementById("mcWsUrl");
+  const streamStatus = document.getElementById("streamStatus");
+  const streamName = document.getElementById("streamName");
+  const volume = document.getElementById("volume");
+  const volumeLabel = document.getElementById("volumeLabel");
+
+  passwordInput.value = localStorage.getItem("panelPassword") || "";
+
+  function authHeaders(extra = {}) {
+    return { Authorization: "Bearer " + (localStorage.getItem("panelPassword") || ""), ...extra };
+  }
+
+  function savePassword() {
+    localStorage.setItem("panelPassword", passwordInput.value);
+    refreshAll();
+  }
+
+  async function api(url, options = {}) {
+    const res = await fetch(url, {
+      ...options,
+      headers: authHeaders(options.headers || {})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || "Erreur API");
+    return data;
+  }
+
+  async function refreshStatus() {
+    try {
+      const data = await api("/api/status");
+      mcWsUrl.textContent = data.mcWsUrl;
+      streamStatus.textContent = data.isStreaming ? "EN COURS" : "arrêté";
+      streamStatus.className = data.isStreaming ? "ok" : "ko";
+      streamName.textContent = data.streamName || "aucune";
+      volume.value = Math.round((data.volume || 1) * 100);
+      volumeLabel.textContent = volume.value + "%";
+      logs.textContent = (data.logs || []).join("\n") || "Aucun log.";
+    } catch (err) {
+      logs.textContent = "Erreur statut : " + err.message;
+    }
+  }
+
+  async function refreshMusic() {
+    try {
+      const data = await api("/api/music");
+      musicList.innerHTML = "";
+      for (const file of data.files) {
+        const opt = document.createElement("option");
+        opt.value = file;
+        opt.textContent = file;
+        musicList.appendChild(opt);
+      }
+    } catch (err) {
+      logs.textContent = "Erreur liste fichiers : " + err.message;
+    }
+  }
+
+  async function refreshAll() {
+    await refreshStatus();
+    await refreshMusic();
+  }
+
+  async function uploadAudio() {
+    const file = document.getElementById("uploadFile").files[0];
+    if (!file) return alert("Choisis un fichier audio.");
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      await fetch("/api/upload", { method: "POST", headers: authHeaders(), body: form }).then(async res => {
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "Upload impossible");
+      });
+      await refreshAll();
+      alert("Upload terminé.");
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function playFile() {
+    const file = musicList.value;
+    if (!file) return alert("Aucun fichier sélectionné.");
+    try {
+      await api("/api/play-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file })
+      });
+      await refreshStatus();
+    } catch (err) { alert(err.message); }
+  }
+
+  async function playUrl() {
+    const url = document.getElementById("streamUrl").value.trim();
+    if (!url) return alert("Mets une URL de flux.");
+    try {
+      await api("/api/play-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url })
+      });
+      await refreshStatus();
+    } catch (err) { alert(err.message); }
+  }
+
+  async function stopAudio() {
+    try {
+      await api("/api/stop", { method: "POST" });
+      await refreshStatus();
+    } catch (err) { alert(err.message); }
+  }
+
+  async function setVolume() {
+    try {
+      await api("/api/volume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ volume: Number(volume.value) / 100 })
+      });
+      await refreshStatus();
+    } catch (err) { alert(err.message); }
+  }
+
+  async function pingMinecraft() {
+    try {
+      await api("/api/ping-minecraft", { method: "POST" });
+      alert("Plugin Minecraft joignable ✅");
+      await refreshStatus();
+    } catch (err) {
+      alert("Plugin Minecraft non joignable : " + err.message);
+    }
+  }
+
+  refreshAll();
+  setInterval(refreshStatus, 3000);
+</script>
+</body>
+</html>
