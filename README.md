@@ -40,6 +40,7 @@ Sound only1.0.2 plugins directory on Minecraft server ~/Server/Plugins/
 Voice chat Mod installed ClientMC
 Voice chat Plugin installed on server Minecraft ~/Serveur/Plugins/
 Lunch the server with paper 
+```
 
 ## OBS
 
