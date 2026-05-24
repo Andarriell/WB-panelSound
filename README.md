@@ -1,228 +1,261 @@
-═══════════════════════════════════════════════════════════════
-  SOUNDONLY + AUDIO PANEL — Guide de déploiement
-═══════════════════════════════════════════════════════════════
+# 🎛 SoundOnly + Audio Panel
 
-PRÉREQUIS
-─────────
-  Serveur Minecraft :
-    - Paper 1.21.x
-    - Simple Voice Chat (voicechat-bukkit-2.6.17.jar ou +)
-    - WorldGuard + WorldEdit (optionnel, pour filtrage par région)
+> Diffuse de la musique en temps réel dans Minecraft via **Simple Voice Chat** — contrôlé depuis un panel web.
 
-  Machine hébergeant le panel :
-    - Node.js 18+
-    - FFmpeg installé (apt install ffmpeg)
-    - Accès réseau vers le port WebSocket du serveur Minecraft
+---
 
+## 📋 Présentation
 
-═══════════════════════════════════════════════════════════════
-  PARTIE 1 — PLUGIN MINECRAFT (SoundOnly)
-═══════════════════════════════════════════════════════════════
+**SoundOnly** est un plugin Paper + un panel web Node.js qui permettent de broadcaster de la musique (MP3, flux Icecast/OBS) directement dans les oreilles des joueurs connectés à Simple Voice Chat, sans aucun effet visuel ou décoration — juste le son.
 
-1. COMPILATION
-──────────────
-  Prérequis : Java 21, Maven 3.8+
+```
+[MP3 / Flux Icecast] → [FFmpeg] → [Panel Node.js] → [WebSocket] → [Plugin SoundOnly] → [Simple Voice Chat] → 🎧 Joueurs
+```
 
-  a) Placer voicechat-bukkit-2.6.17.jar dans le dossier lib/ :
-       final_plugin/lib/voicechat-api-2.6.17.jar
+---
 
-  b) Installer le jar dans le cache Maven local :
-       mvn install:install-file \
-         -Dfile=lib/voicechat-api-2.6.17.jar \
-         -DgroupId=de.maxhenkel.voicechat \
-         -DartifactId=voicechat-api \
-         -Dversion=2.6.17 \
-         -Dpackaging=jar
+## ✨ Fonctionnalités
 
-     OU simplement compiler directement (le pom.xml utilise
-     le dossier lib/ local via <scope>system</scope>) :
-       cd final_plugin
-       mvn package -q
+- 🎵 Lecture de fichiers audio (MP3, WAV, OGG, FLAC, M4A)
+- 📻 Flux live Icecast / OBS
+- 📂 Système de playlists nommées avec lecture automatique enchaînée
+- 🔀 Mode shuffle
+- ⏮ ⏭ Navigation entre morceaux
+- 🔊 Contrôle du volume via gain FFmpeg
+- 🗺 Filtrage par région WorldGuard (optionnel)
+- 🔌 WebSocket dédié — panel séparé du serveur Minecraft
+- 🖥 Interface web épurée, responsive
 
-  c) Le jar compilé se trouve dans :
-       final_plugin/target/SoundOnly-1.0.0.jar
+---
 
+## 🧱 Prérequis
 
-2. INSTALLATION
-───────────────
-  a) Copier SoundOnly-1.0.0.jar dans le dossier plugins/ du
-     serveur Minecraft.
+### Serveur Minecraft
+| Composant | Version |
+|-----------|---------|
+| Paper | 1.21.x |
+| Simple Voice Chat | 2.6.17+ |
+| WorldGuard + WorldEdit | 7.x (optionnel) |
 
-  b) S'assurer que ces plugins sont aussi présents :
-       - voicechat-bukkit-2.6.17.jar (ou version compatible)
-       - worldguard-bukkit-7.x.x.jar (optionnel)
-       - worldedit-bukkit-7.x.x.jar  (optionnel)
+### Machine hébergeant le panel
+| Composant | Version |
+|-----------|---------|
+| Node.js | 18+ |
+| FFmpeg | 5+ (`apt install ffmpeg`) |
+| npm | 8+ |
 
-  c) Démarrer le serveur — les fichiers de config sont générés
-     automatiquement dans plugins/SoundOnly/
+---
 
+## 🚀 Installation
 
-3. CONFIGURATION  (plugins/SoundOnly/config.yml)
-─────────────────────────────────────────────────
-  websocket:
-    address: "0.0.0.0"   # écoute sur toutes les interfaces
-    port: 8765            # port WebSocket — doit être ouvert
-                          # dans le pare-feu du VPS
+### 1. Plugin Minecraft
 
-  worldguard:
-    enabled: false        # true = seuls les joueurs dans les
-                          # régions listées entendent le son
-    regions:
-      - main_stage        # IDs des régions WorldGuard
-    allow-if-missing: true
-    bypass-permission: "soundonly.worldguard.bypass"
+**Compiler le plugin :**
 
+```bash
+# Placer voicechat-bukkit-2.6.17.jar dans lib/
+# (téléchargeable sur Modrinth : https://modrinth.com/plugin/simple-voice-chat)
+cp voicechat-bukkit-2.6.17.jar final_plugin/lib/voicechat-api-2.6.17.jar
 
-4. OUVERTURE DU PORT PARE-FEU
-──────────────────────────────
-  Le panel Node.js doit pouvoir atteindre le port WebSocket
-  (8765 par défaut).
+cd final_plugin
+mvn package -q
+```
 
-  Si le panel est sur la même machine que Minecraft :
-    → pas besoin d'ouvrir le port en externe
+**Déployer :**
 
-  Si le panel est sur une autre machine :
-    # UFW
-    ufw allow 8765/tcp
+```bash
+cp target/SoundOnly-1.0.0.jar /chemin/vers/plugins/
+```
 
-    # iptables
-    iptables -A INPUT -p tcp --dport 8765 -j ACCEPT
+**Redémarrer le serveur** — la config est générée automatiquement dans `plugins/SoundOnly/`.
 
-    # OVH / firewall cloud : ajouter une règle TCP entrante
-    # sur le port 8765 dans le manager OVH
+---
 
+### 2. Panel web
 
-5. COMMANDES IN-GAME
-─────────────────────
-  /soundonly status   → état du WebSocket, streaming, clients
-  /soundonly stop     → arrête le stream en cours
-  /soundonly reload   → recharge config.yml sans redémarrer
+```bash
+cd final_panel
+npm install
+cp .env.example .env
+nano .env        # configurer mot de passe et URL WebSocket
+npm start
+```
 
-  Permission requise : soundonly.control (op par défaut)
+Accès depuis le navigateur : `http://<IP-DU-SERVEUR>:3000`
 
+---
 
-═══════════════════════════════════════════════════════════════
-  PARTIE 2 — PANEL WEB (audio-panel)
-═══════════════════════════════════════════════════════════════
+## ⚙️ Configuration
 
-1. INSTALLATION
-───────────────
-  a) Copier le dossier final_panel/ sur le serveur hébergeant
-     le panel.
+### Plugin — `plugins/SoundOnly/config.yml`
 
-  b) Installer les dépendances :
-       cd final_panel
-       npm install
+```yaml
+websocket:
+  address: "0.0.0.0"   # écoute sur toutes les interfaces
+  port: 8765            # port WebSocket (ouvrir dans le pare-feu)
 
-  c) Créer le fichier .env à partir de l'exemple :
-       cp .env.example .env
-       nano .env
+worldguard:
+  enabled: false        # true = filtrage par région
+  regions:
+    - main_stage        # IDs des régions WorldGuard autorisées
+  allow-if-missing: true
+  bypass-permission: "soundonly.worldguard.bypass"
+```
 
+### Panel — `.env`
 
-2. CONFIGURATION  (.env)
-─────────────────────────
-  PANEL_PORT=3000
-    → Port HTTP du panel web (accessible depuis le navigateur)
+```env
+# Port HTTP du panel web
+PANEL_PORT=3000
 
-  PANEL_PASSWORD=mon-mot-de-passe
-    → Mot de passe pour accéder au panel
-    → Choisir quelque chose de solide si le panel est exposé
+# Mot de passe d'accès au panel
+PANEL_PASSWORD=change-moi
 
-  MC_WS_URL=ws://127.0.0.1:8765
-    → URL WebSocket du plugin Minecraft
-    → Si panel et Minecraft sont sur la même machine :
-         ws://127.0.0.1:8765
-    → Si sur des machines différentes :
-         ws://<IP-DU-SERVEUR-MINECRAFT>:8765
+# URL WebSocket du plugin Minecraft
+# Même machine : ws://127.0.0.1:8765
+# Machine distante : ws://<IP-MINECRAFT>:8765
+MC_WS_URL=ws://127.0.0.1:8765
+```
 
+---
 
-3. LANCEMENT
-────────────
-  # Lancement simple
-  npm start
+## 🔥 Pare-feu
 
-  # Lancement en arrière-plan avec PM2 (recommandé)
-  npm install -g pm2
-  pm2 start server.js --name audio-panel
-  pm2 save
-  pm2 startup   # pour démarrage automatique au boot
+Le port WebSocket (8765) doit être accessible depuis la machine hébergeant le panel.
 
+```bash
+# UFW
+ufw allow 8765/tcp
+ufw allow 3000/tcp   # pour le panel web
 
-4. ACCÈS AU PANEL
-──────────────────
-  Depuis un navigateur :
-    http://<IP-DU-VPS>:3000
+# iptables
+iptables -A INPUT -p tcp --dport 8765 -j ACCEPT
+```
 
-  Si le port 3000 est bloqué par le pare-feu :
-    ufw allow 3000/tcp
+---
 
-  Recommandé en production : mettre un reverse proxy Nginx
-  devant le panel avec HTTPS (certbot).
+## 🖥 Lancement en production (PM2)
 
+```bash
+npm install -g pm2
+cd final_panel
+pm2 start server.js --name audio-panel
+pm2 save
+pm2 startup
+```
 
-5. STRUCTURE DES DOSSIERS
-──────────────────────────
-  final_panel/
-  ├── server.js          → serveur Node.js principal
-  ├── .env               → configuration (à créer)
-  ├── .env.example       → modèle de configuration
-  ├── package.json
-  ├── music/             → dossier des fichiers audio uploadés
-  ├── playlists.json     → sauvegarde des playlists (auto-créé)
-  └── public/
-      └── index.html     → interface web
+---
 
+## 📁 Structure du projet
 
-═══════════════════════════════════════════════════════════════
-  SCHÉMA DE FONCTIONNEMENT
-═══════════════════════════════════════════════════════════════
+```
+SoundOnly/
+├── final_plugin/                  # Sources du plugin Java
+│   ├── src/main/java/com/soundonly/
+│   │   ├── SoundOnlyPlugin.java        # Classe principale
+│   │   ├── websocket/
+│   │   │   └── AudioWebSocketServer.java
+│   │   ├── voice/
+│   │   │   └── VoicechatIntegration.java
+│   │   └── worldguard/
+│   │       └── WorldGuardFilter.java
+│   ├── src/main/resources/
+│   │   ├── plugin.yml
+│   │   └── config.yml
+│   ├── lib/
+│   │   └── voicechat-api-2.6.17.jar   # À fournir manuellement
+│   └── pom.xml
+│
+└── final_panel/                   # Panel web Node.js
+    ├── server.js                       # Serveur Express + WebSocket
+    ├── .env.example                    # Modèle de configuration
+    ├── package.json
+    ├── music/                          # Fichiers audio uploadés
+    ├── playlists.json                  # Playlists sauvegardées (auto)
+    └── public/
+        └── index.html                  # Interface web
+```
 
-  [Fichier MP3 / Flux Icecast]
-          │
-          ▼
-  [FFmpeg] → PCM 16-bit mono 48kHz
-          │
-          ▼
-  [Panel Node.js] → frames base64 via WebSocket
-          │
-          ▼
-  [Plugin SoundOnly] → encodage Opus (mode AUDIO)
-          │
-          ▼
-  [Simple Voice Chat] → diffusion à chaque joueur connecté
+---
 
+## 🎮 Commandes in-game
 
-═══════════════════════════════════════════════════════════════
-  DÉPANNAGE
-═══════════════════════════════════════════════════════════════
+| Commande | Description |
+|----------|-------------|
+| `/soundonly status` | État du WebSocket, streaming, clients connectés |
+| `/soundonly stop` | Arrête le stream en cours |
+| `/soundonly reload` | Recharge `config.yml` sans redémarrer |
 
-  Problème : "Plugin : erreur" dans le panel
-  → Vérifier que le serveur Minecraft tourne
-  → Vérifier MC_WS_URL dans .env
-  → Vérifier que le port 8765 est ouvert
-  → Vérifier dans les logs Minecraft :
-      [SoundOnly] WebSocket démarré sur 0.0.0.0:8765
+**Permission requise :** `soundonly.control` (op par défaut)
 
-  Problème : Pas de son en jeu
-  → Vérifier que Simple Voice Chat est connecté (icône en jeu)
-  → Vérifier dans les logs Minecraft :
-      [SoundOnly] Session audio ouverte pour <pseudo>
-  → OpenAudioMc ou un plugin similaire peut interférer
-      → désactiver OpenAudioMc si présent
+---
 
-  Problème : Son saccadé
-  → FFmpeg doit tourner en continu sans interruption
-  → Vérifier que le réseau entre panel et Minecraft est stable
-  → Éviter de relancer trop rapidement après un stop
+## 🔌 Protocole WebSocket
 
-  Problème : FFmpeg code 255
-  → Normal si c'est suite à un clic sur Stop (arrêt volontaire)
-  → Anormal si c'est immédiatement au lancement :
-      vérifier que le fichier audio existe dans music/
+Le panel communique avec le plugin via WebSocket (JSON).
 
-  Problème : Compilation Maven échoue sur voicechat-api
-  → Télécharger voicechat-bukkit-2.6.17.jar depuis Modrinth
-  → Le placer dans final_plugin/lib/voicechat-api-2.6.17.jar
-  → Relancer mvn package -q
+| Message | Direction | Description |
+|---------|-----------|-------------|
+| `ping` / `pong` | ↔ | Keepalive |
+| `voice_config` | Panel → Plugin | Active/désactive le streaming |
+| `voice_audio` | Panel → Plugin | Frame PCM encodée en base64 |
+| `get_voice_status` | Panel → Plugin | Demande l'état courant |
+| `status` | Plugin → Panel | Réponse état |
 
-═══════════════════════════════════════════════════════════════
+**Format audio :** PCM 16-bit little-endian, mono, 48kHz, 1920 bytes par frame (960 samples = 20ms).
+
+---
+
+## 🛠 Dépannage
+
+**"Plugin : erreur" dans le panel**
+- Vérifier que le serveur Minecraft tourne
+- Vérifier `MC_WS_URL` dans `.env`
+- Vérifier que le port 8765 est ouvert
+- Chercher dans les logs : `[SoundOnly] WebSocket démarré sur 0.0.0.0:8765`
+
+**Pas de son en jeu**
+- Vérifier que Simple Voice Chat est bien connecté (icône en jeu)
+- Chercher dans les logs : `[SoundOnly] Session audio ouverte pour <pseudo>`
+- Si OpenAudioMc est installé → le désactiver (conflit avec Voice Chat)
+
+**Son saccadé**
+- Vérifier la stabilité réseau entre panel et Minecraft
+- Éviter de relancer trop rapidement après un stop
+- Vérifier que FFmpeg tourne en continu sans interruption
+
+**FFmpeg code 255**
+- Normal après un clic sur Stop (arrêt volontaire via SIGTERM)
+- Si immédiat au lancement : vérifier que le fichier existe dans `music/`
+
+**Erreur Maven `voicechat-api` introuvable**
+- Télécharger `voicechat-bukkit-2.6.17.jar` depuis [Modrinth](https://modrinth.com/plugin/simple-voice-chat)
+- Le placer dans `final_plugin/lib/voicechat-api-2.6.17.jar`
+- Relancer `mvn package -q`
+
+---
+
+## 📦 Dépendances
+
+### Plugin Java
+| Dépendance | Scope |
+|------------|-------|
+| Paper API 1.21 | provided |
+| Simple Voice Chat API 2.6.17 | provided (lib locale) |
+| WorldGuard 7.x | provided |
+| Java-WebSocket 1.5.6 | shaded |
+| Gson 2.11 | shaded |
+
+### Panel Node.js
+| Dépendance | Usage |
+|------------|-------|
+| express | Serveur HTTP |
+| ws | Client WebSocket vers Minecraft |
+| multer | Upload de fichiers audio |
+| dotenv | Variables d'environnement |
+
+---
+
+## 📄 Licence
+
+MIT
